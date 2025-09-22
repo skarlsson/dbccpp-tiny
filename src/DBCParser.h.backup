@@ -1,0 +1,689 @@
+#pragma once
+
+#include "DBCLexer.h"
+#include "DBCAST.h"
+#include <memory>
+#include <stdexcept>
+#include <sstream>
+#include <algorithm>
+
+namespace dbcppp {
+
+class DBCParseError : public std::runtime_error {
+public:
+    DBCParseError(const std::string& msg, size_t line, size_t column)
+        : std::runtime_error(formatError(msg, line, column))
+        , line_(line), column_(column) {}
+    
+    size_t line() const { return line_; }
+    size_t column() const { return column_; }
+    
+private:
+    size_t line_;
+    size_t column_;
+    
+    static std::string formatError(const std::string& msg, size_t line, size_t column) {
+        std::ostringstream oss;
+        oss << "Parse error at line " << line << ", column " << column << ": " << msg;
+        return oss.str();
+    }
+};
+
+class DBCParser {
+private:
+    std::vector<Token> tokens_;
+    size_t pos_;
+    
+    const Token& current() const {
+        if (pos_ >= tokens_.size()) {
+            static Token eof(TokenType::END_OF_FILE, "", 0, 0);
+            return eof;
+        }
+        return tokens_[pos_];
+    }
+    
+    const Token& peek(size_t offset = 1) const {
+        if (pos_ + offset >= tokens_.size()) {
+            static Token eof(TokenType::END_OF_FILE, "", 0, 0);
+            return eof;
+        }
+        return tokens_[pos_ + offset];
+    }
+    
+    void advance() {
+        if (pos_ < tokens_.size()) {
+            pos_++;
+        }
+    }
+    
+    bool match(TokenType type) {
+        if (current().type == type) {
+            advance();
+            return true;
+        }
+        return false;
+    }
+    
+    void expect(TokenType type, const std::string& message = "") {
+        if (current().type != type) {
+            std::string msg = message.empty() ? 
+                "Expected " + tokenTypeToString(type) + " but got " + tokenTypeToString(current().type) :
+                message;
+            throw DBCParseError(msg, current().line, current().column);
+        }
+        advance();
+    }
+    
+    std::string tokenTypeToString(TokenType type) {
+        switch (type) {
+            case TokenType::INTEGER: return "INTEGER";
+            case TokenType::FLOAT: return "FLOAT";
+            case TokenType::STRING: return "STRING";
+            case TokenType::IDENTIFIER: return "IDENTIFIER";
+            case TokenType::COLON: return "COLON";
+            case TokenType::SEMICOLON: return "SEMICOLON";
+            case TokenType::COMMA: return "COMMA";
+            case TokenType::VERSION: return "VERSION";
+            case TokenType::NS_: return "NS_";
+            case TokenType::BS_: return "BS_";
+            case TokenType::BU_: return "BU_";
+            case TokenType::BO_: return "BO_";
+            case TokenType::SG_: return "SG_";
+            case TokenType::VAL_TABLE_: return "VAL_TABLE_";
+            case TokenType::END_OF_FILE: return "END_OF_FILE";
+            // ... add other cases as needed
+            default: return "UNKNOWN";
+        }
+    }
+    
+    // Parse functions for each DBC element
+    AST::Version parseVersion() {
+        AST::Version version;
+        version.pos = {current().line, current().column};
+        expect(TokenType::VERSION);
+        expect(TokenType::STRING);
+        version.version = tokens_[pos_ - 1].value;
+        return version;
+    }
+    
+    std::vector<std::string> parseNewSymbols() {
+        std::vector<std::string> symbols;
+        expect(TokenType::NS_);
+        expect(TokenType::COLON);
+        
+        // NS_ section lists symbol names that may include keywords
+        while (current().type != TokenType::BS_ && 
+               current().type != TokenType::BU_ && 
+               current().type != TokenType::END_OF_FILE) {
+            // Skip empty lines and collect identifiers
+            if (current().type == TokenType::IDENTIFIER ||
+                current().type == TokenType::NS_DESC_ ||
+                current().type == TokenType::CM_ ||
+                current().type == TokenType::BA_DEF_ ||
+                current().type == TokenType::BA_ ||
+                current().type == TokenType::VAL_ ||
+                current().type == TokenType::BA_DEF_DEF_) {
+                symbols.push_back(current().value);
+            }
+            advance();
+        }
+        
+        return symbols;
+    }
+    
+    std::optional<AST::BitTiming> parseBitTiming() {
+        if (!match(TokenType::BS_)) {
+            return std::nullopt;
+        }
+        
+        expect(TokenType::COLON);
+        
+        // Bit timing is optional
+        if (current().type != TokenType::INTEGER) {
+            return std::nullopt;
+        }
+        
+        AST::BitTiming bt;
+        bt.baudrate = std::stoull(current().value);
+        advance();
+        
+        expect(TokenType::COLON);
+        bt.btr1 = std::stoull(current().value);
+        advance();
+        
+        expect(TokenType::COMMA);
+        bt.btr2 = std::stoull(current().value);
+        advance();
+        
+        return bt;
+    }
+    
+    std::vector<AST::NodeDef> parseNodes() {
+        std::vector<AST::NodeDef> nodes;
+        expect(TokenType::BU_);
+        
+        while (current().type == TokenType::IDENTIFIER) {
+            AST::NodeDef node;
+            node.pos = {current().line, current().column};
+            node.name = current().value;
+            nodes.push_back(node);
+            advance();
+        }
+        
+        return nodes;
+    }
+    
+    AST::Signal parseSignal() {
+        AST::Signal signal;
+        signal.pos = {current().line, current().column};
+        
+        expect(TokenType::SG_);
+        
+        // Signal name
+        signal.name = current().value;
+        advance();
+        
+        // Optional multiplexer indicator
+        if (current().type == TokenType::MUX_M) {
+            signal.mux_type = AST::MultiplexerType::MuxSwitch;
+            advance();
+        } else if (current().type == TokenType::MUX_m) {
+            signal.mux_type = AST::MultiplexerType::MuxValue;
+            // Extract the number from m<num>
+            signal.mux_value = std::stoull(current().value.substr(1));
+            advance();
+        }
+        
+        expect(TokenType::COLON);
+        
+        // Start bit
+        signal.start_bit = std::stoull(current().value);
+        advance();
+        
+        expect(TokenType::PIPE);
+        
+        // Signal size
+        signal.length = std::stoull(current().value);
+        advance();
+        
+        expect(TokenType::AT);
+        
+        // Byte order
+        signal.byte_order = current().value[0];
+        advance();
+        
+        // Value type (signed/unsigned)
+        if (current().type == TokenType::PLUS) {
+            signal.value_type = '+';
+            advance();
+        } else if (current().type == TokenType::MINUS) {
+            signal.value_type = '-';
+            advance();
+        } else {
+            throw DBCParseError("Expected + or - for signal value type", current().line, current().column);
+        }
+        
+        expect(TokenType::LPAREN);
+        
+        // Factor
+        if (current().type == TokenType::FLOAT || current().type == TokenType::INTEGER) {
+            signal.factor = std::stod(current().value);
+            advance();
+        }
+        
+        expect(TokenType::COMMA);
+        
+        // Offset
+        if (current().type == TokenType::FLOAT || current().type == TokenType::INTEGER) {
+            signal.offset = std::stod(current().value);
+            advance();
+        } else if (current().type == TokenType::MINUS) {
+            advance();
+            signal.offset = -std::stod(current().value);
+            advance();
+        }
+        
+        expect(TokenType::RPAREN);
+        
+        expect(TokenType::LBRACKET);
+        
+        // Minimum
+        if (current().type == TokenType::FLOAT || current().type == TokenType::INTEGER) {
+            signal.minimum = std::stod(current().value);
+            advance();
+        } else if (current().type == TokenType::MINUS) {
+            advance();
+            signal.minimum = -std::stod(current().value);
+            advance();
+        }
+        
+        expect(TokenType::PIPE);
+        
+        // Maximum
+        if (current().type == TokenType::FLOAT || current().type == TokenType::INTEGER) {
+            signal.maximum = std::stod(current().value);
+            advance();
+        }
+        
+        expect(TokenType::RBRACKET);
+        
+        // Unit
+        expect(TokenType::STRING);
+        signal.unit = tokens_[pos_ - 1].value;
+        
+        // Receivers
+        while (current().type == TokenType::IDENTIFIER && current().value != "SG_") {
+            signal.receivers.push_back(current().value);
+            advance();
+            
+            // Skip optional comma
+            if (current().type == TokenType::COMMA) {
+                advance();
+            }
+        }
+        
+        return signal;
+    }
+    
+    AST::Message parseMessage() {
+        AST::Message message;
+        message.pos = {current().line, current().column};
+        
+        expect(TokenType::BO_);
+        
+        // Message ID
+        message.id = std::stoull(current().value);
+        advance();
+        
+        // Message name
+        message.name = current().value;
+        advance();
+        
+        expect(TokenType::COLON);
+        
+        // DLC
+        message.size = std::stoull(current().value);
+        advance();
+        
+        // Transmitter
+        if (current().type == TokenType::IDENTIFIER) {
+            message.transmitter = current().value;
+            advance();
+        }
+        
+        // Parse signals
+        while (current().type == TokenType::SG_) {
+            message.signals.push_back(parseSignal());
+        }
+        
+        return message;
+    }
+    
+    AST::ValueTable parseValueTable() {
+        AST::ValueTable vt;
+        vt.pos = {current().line, current().column};
+        
+        expect(TokenType::VAL_TABLE_);
+        
+        // Value table name
+        vt.name = current().value;
+        advance();
+        
+        // Parse value descriptions
+        while (current().type == TokenType::INTEGER) {
+            AST::ValueEncodingDescription desc;
+            desc.value = std::stoll(current().value);
+            advance();
+            
+            expect(TokenType::STRING);
+            desc.description = tokens_[pos_ - 1].value;
+            
+            vt.descriptions.push_back(desc);
+        }
+        
+        // Semicolon is optional in some DBC files
+        if (current().type == TokenType::SEMICOLON) {
+            advance();
+        }
+        
+        return vt;
+    }
+    
+    AST::Comment parseComment() {
+        AST::Comment comment;
+        comment.pos = {current().line, current().column};
+        
+        expect(TokenType::CM_);
+        
+        // Determine comment type
+        if (current().type == TokenType::BO_) {
+            advance();
+            comment.type = AST::Comment::Type::Message;
+            comment.message_id = std::stoull(current().value);
+            advance();
+        } else if (current().type == TokenType::SG_) {
+            advance();
+            comment.type = AST::Comment::Type::Signal;
+            comment.message_id = std::stoull(current().value);
+            advance();
+            comment.signal_name = current().value;
+            advance();
+        } else if (current().type == TokenType::BU_) {
+            advance();
+            comment.type = AST::Comment::Type::Node;
+            comment.node_name = current().value;
+            advance();
+        } else if (current().type == TokenType::EV_) {
+            advance();
+            comment.type = AST::Comment::Type::EnvVar;
+            comment.env_var_name = current().value;
+            advance();
+        } else {
+            comment.type = AST::Comment::Type::Network;
+        }
+        
+        expect(TokenType::STRING);
+        comment.text = tokens_[pos_ - 1].value;
+        
+        expect(TokenType::SEMICOLON);
+        
+        return comment;
+    }
+    
+    AST::SignalMultiplexerValue parseSignalMultiplexerValue() {
+        AST::SignalMultiplexerValue smv;
+        smv.pos = {current().line, current().column};
+        
+        expect(TokenType::SG_MUL_VAL_);
+        
+        smv.message_id = std::stoull(current().value);
+        advance();
+        
+        smv.signal_name = current().value;
+        advance();
+        
+        smv.switch_name = current().value;
+        advance();
+        
+        // Parse value ranges
+        while (current().type == TokenType::INTEGER) {
+            AST::SignalMultiplexerValue::Range range;
+            range.from = std::stoull(current().value);
+            advance();
+            
+            expect(TokenType::MINUS);
+            
+            range.to = std::stoull(current().value);
+            advance();
+            
+            smv.value_ranges.push_back(range);
+            
+            // Optional comma
+            if (current().type == TokenType::COMMA) {
+                advance();
+            }
+        }
+        
+        expect(TokenType::SEMICOLON);
+        
+        return smv;
+    }
+    
+    AST::AttributeDefinition parseAttributeDefinition() {
+        AST::AttributeDefinition def;
+        def.pos = {current().line, current().column};
+        
+        expect(TokenType::BA_DEF_);
+        
+        // Object type (optional)
+        if (current().type == TokenType::BU_) {
+            def.object_type = AST::AttributeDefinition::ObjectType::Node;
+            advance();
+        } else if (current().type == TokenType::BO_) {
+            def.object_type = AST::AttributeDefinition::ObjectType::Message;
+            advance();
+        } else if (current().type == TokenType::SG_) {
+            def.object_type = AST::AttributeDefinition::ObjectType::Signal;
+            advance();
+        } else if (current().type == TokenType::EV_) {
+            def.object_type = AST::AttributeDefinition::ObjectType::EnvVar;
+            advance();
+        } else {
+            def.object_type = AST::AttributeDefinition::ObjectType::Network;
+        }
+        
+        // Attribute name
+        expect(TokenType::STRING);
+        def.name = tokens_[pos_ - 1].value;
+        
+        // Value type
+        if (current().type == TokenType::IDENTIFIER || current().type == TokenType::STRING) {
+            def.value_type = current().value;
+            advance();
+            
+            // Handle numeric ranges
+            if (def.value_type == "INT" || def.value_type == "HEX" || def.value_type == "FLOAT") {
+                if (current().type == TokenType::INTEGER || current().type == TokenType::FLOAT) {
+                    def.min_value = std::stod(current().value);
+                    advance();
+                    def.max_value = std::stod(current().value);
+                    advance();
+                }
+            }
+            // Handle enum values
+            else if (def.value_type == "ENUM") {
+                while (current().type == TokenType::STRING) {
+                    def.enum_values.push_back(current().value);
+                    advance();
+                    if (current().type == TokenType::COMMA) {
+                        advance();
+                    }
+                }
+            }
+            // Handle string default
+            else if (def.value_type == "STRING") {
+                if (current().type == TokenType::STRING) {
+                    def.default_value = current().value;
+                    advance();
+                }
+            }
+        }
+        
+        expect(TokenType::SEMICOLON);
+        
+        return def;
+    }
+    
+    AST::AttributeValue_t parseAttributeValue() {
+        AST::AttributeValue_t attr;
+        attr.pos = {current().line, current().column};
+        
+        expect(TokenType::BA_);
+        
+        // Attribute name
+        expect(TokenType::STRING);
+        attr.attribute_name = tokens_[pos_ - 1].value;
+        
+        // Determine attribute type
+        if (current().type == TokenType::BU_) {
+            advance();
+            attr.type = AST::AttributeValue_t::Type::Node;
+            attr.node_name = current().value;
+            advance();
+        } else if (current().type == TokenType::BO_) {
+            advance();
+            attr.type = AST::AttributeValue_t::Type::Message;
+            attr.message_id = std::stoull(current().value);
+            advance();
+        } else if (current().type == TokenType::SG_) {
+            advance();
+            attr.type = AST::AttributeValue_t::Type::Signal;
+            attr.message_id = std::stoull(current().value);
+            advance();
+            attr.signal_name = current().value;
+            advance();
+        } else if (current().type == TokenType::EV_) {
+            advance();
+            attr.type = AST::AttributeValue_t::Type::EnvVar;
+            attr.env_var_name = current().value;
+            advance();
+        } else {
+            attr.type = AST::AttributeValue_t::Type::Network;
+        }
+        
+        // Attribute value
+        if (current().type == TokenType::INTEGER) {
+            attr.value = std::stoll(current().value);
+            advance();
+        } else if (current().type == TokenType::FLOAT) {
+            attr.value = std::stod(current().value);
+            advance();
+        } else if (current().type == TokenType::STRING) {
+            attr.value = current().value;
+            advance();
+        }
+        
+        expect(TokenType::SEMICOLON);
+        
+        return attr;
+    }
+    
+    AST::EnvironmentVariable parseEnvironmentVariable() {
+        AST::EnvironmentVariable ev;
+        ev.pos = {current().line, current().column};
+        
+        expect(TokenType::EV_);
+        
+        // Name
+        ev.name = current().value;
+        advance();
+        
+        expect(TokenType::COLON);
+        
+        // Type
+        ev.var_type = std::stoull(current().value);
+        advance();
+        
+        expect(TokenType::LBRACKET);
+        
+        // Min
+        ev.minimum = std::stod(current().value);
+        advance();
+        
+        expect(TokenType::PIPE);
+        
+        // Max
+        ev.maximum = std::stod(current().value);
+        advance();
+        
+        expect(TokenType::RBRACKET);
+        
+        // Unit
+        expect(TokenType::STRING);
+        ev.unit = tokens_[pos_ - 1].value;
+        
+        // Initial value
+        ev.initial_value = std::stod(current().value);
+        advance();
+        
+        // ID
+        ev.id = std::stoull(current().value);
+        advance();
+        
+        // Access type
+        ev.access_type = current().value;
+        advance();
+        
+        // Access nodes
+        while (current().type == TokenType::IDENTIFIER && 
+               current().type != TokenType::SEMICOLON) {
+            ev.access_nodes.push_back(current().value);
+            advance();
+            if (current().type == TokenType::COMMA) {
+                advance();
+            }
+        }
+        
+        expect(TokenType::SEMICOLON);
+        
+        return ev;
+    }
+    
+    AST::MessageTransmitter parseMessageTransmitter() {
+        AST::MessageTransmitter mt;
+        mt.pos = {current().line, current().column};
+        
+        expect(TokenType::BO_TX_BU_);
+        
+        // Message ID
+        mt.message_id = std::stoull(current().value);
+        advance();
+        
+        expect(TokenType::COLON);
+        
+        // Transmitters
+        while (current().type == TokenType::IDENTIFIER) {
+            mt.transmitters.push_back(current().value);
+            advance();
+            if (current().type == TokenType::COMMA) {
+                advance();
+            }
+        }
+        
+        expect(TokenType::SEMICOLON);
+        
+        return mt;
+    }
+    
+public:
+    std::unique_ptr<AST::Network> parse(const std::string& input) {
+        // Tokenize
+        DBCLexer lexer(input);
+        tokens_ = lexer.tokenize();
+        pos_ = 0;
+        
+        auto network = std::make_unique<AST::Network>();
+        
+        // Parse VERSION
+        network->version = parseVersion();
+        
+        // Parse optional sections in order
+        if (current().type == TokenType::NS_) {
+            network->new_symbols = parseNewSymbols();
+        }
+        
+        // Parse BS_ (bit timing)
+        network->bit_timing = parseBitTiming();
+        
+        // Parse BU_ (nodes)
+        network->nodes = parseNodes();
+        
+        // Parse remaining elements
+        while (current().type != TokenType::END_OF_FILE) {
+            if (current().type == TokenType::VAL_TABLE_) {
+                network->value_tables.push_back(parseValueTable());
+            } else if (current().type == TokenType::BO_) {
+                network->messages.push_back(parseMessage());
+            } else if (current().type == TokenType::CM_) {
+                network->comments.push_back(parseComment());
+            } else if (current().type == TokenType::BA_DEF_) {
+                network->attribute_definitions.push_back(parseAttributeDefinition());
+            } else if (current().type == TokenType::BA_) {
+                network->attribute_values.push_back(parseAttributeValue());
+            } else if (current().type == TokenType::EV_) {
+                network->environment_variables.push_back(parseEnvironmentVariable());
+            } else if (current().type == TokenType::BO_TX_BU_) {
+                network->message_transmitters.push_back(parseMessageTransmitter());
+            } else if (current().type == TokenType::SG_MUL_VAL_) {
+                network->signal_multiplexer_values.push_back(parseSignalMultiplexerValue());
+            } else {
+                // Skip unhandled tokens for now
+                advance();
+            }
+        }
+        
+        return network;
+    }
+};
+
+} // namespace dbcppp

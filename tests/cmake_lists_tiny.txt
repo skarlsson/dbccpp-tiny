@@ -1,0 +1,56 @@
+# Minimal test suite for dbcppp-tiny
+
+include_directories(
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_BINARY_DIR}/src
+)
+
+# Hand parser tests
+add_executable(test_hand_parser
+    HandParserTests.cpp
+    Catch2.cpp
+    main.cpp
+)
+set_property(TARGET test_hand_parser PROPERTY CXX_STANDARD 17)
+
+# Individual test executables for different categories
+add_executable(test_lexer_only
+    test_lexer.cpp
+)
+set_property(TARGET test_lexer_only PROPERTY CXX_STANDARD 17)
+
+add_executable(test_parser_basic
+    test_parser_basic.cpp
+)
+set_property(TARGET test_parser_basic PROPERTY CXX_STANDARD 17)
+
+add_executable(test_parser_multiplex
+    test_parser_multiplex.cpp
+)
+set_property(TARGET test_parser_multiplex PROPERTY CXX_STANDARD 17)
+
+add_executable(test_parser_attributes
+    test_parser_attributes.cpp
+)
+set_property(TARGET test_parser_attributes PROPERTY CXX_STANDARD 17)
+
+# CTest integration
+enable_testing()
+
+# Add tests
+add_test(NAME HandParserTests COMMAND test_hand_parser)
+add_test(NAME LexerTests COMMAND test_lexer_only)
+add_test(NAME ParserBasicTests COMMAND test_parser_basic)
+add_test(NAME ParserMultiplexTests COMMAND test_parser_multiplex)
+add_test(NAME ParserAttributeTests COMMAND test_parser_attributes)
+
+# Test with real DBC files
+add_test(NAME ParseTestDBC 
+    COMMAND test_hand_parser "[files]"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+# Custom target to run all tests
+add_custom_target(RunHandParserTests 
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+    DEPENDS test_hand_parser test_lexer_only test_parser_basic 
+            test_parser_multiplex test_parser_attributes)
