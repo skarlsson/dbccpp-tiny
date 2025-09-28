@@ -1,8 +1,6 @@
 #include <iterator>
 #include <regex>
-#include <fstream>
 #include <variant>
-#include <sstream>
 #include <unordered_map>
 #include <cassert>
 #include <algorithm>
@@ -10,6 +8,7 @@
 #include "dbcppp-tiny/network.h"
 #include "dbcast.h"
 #include "dbc_parser.h"
+#include "file_reader.h"
 #include "log.h"
 
 using namespace dbcppp;
@@ -446,8 +445,11 @@ static auto getAttributeDefinitions(const AST::Network& net)
         case AST::AttributeDefinition::ObjectType::RelSignal:
             object_type = IAttributeDefinition::EObjectType::Signal;  // Map to Signal for now
             break;
+        default:
+            LOG_ERROR("Unknown attribute definition object type: %d", static_cast<int>(ad.object_type));
+            continue;  // Skip this attribute definition
         }
-        
+
         IAttributeDefinition::value_type_t value_type;
         
         // Determine the attribute value type based on the value_type string
@@ -564,18 +566,38 @@ std::unique_ptr<INetwork> DBCAST2Network(const AST::Network& net)
 );
 }
 
-std::unique_ptr<INetwork> INetwork::LoadDBCFromIs(std::istream& is)
+// Implementation without iostream
+std::unique_ptr<INetwork> INetwork::LoadDBCFromFile(const char* filename)
 {
-    std::string str((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
-    std::unique_ptr<dbcppp::INetwork> network;
-    
+    // Use FileLineReader to read file without iostream
+    FileLineReader reader;
+    if (!reader.open(filename)) {
+        LOG_ERROR("Cannot open file: %s", filename);
+        return nullptr;
+    }
+
+    // Read entire file into string
+    std::string content;
+    std::string line;
+    while (reader.readLine(line)) {
+        content += line + "\n";
+    }
+    reader.close();
+
+    // Use existing full parser
+    return LoadDBCFromString(content);
+}
+
+std::unique_ptr<INetwork> INetwork::LoadDBCFromString(const std::string& content)
+{
+    // Use the existing full DBC parser that has complete implementation
     DBCParser parser;
-    auto parseResult = parser.parse(str);
+    auto parseResult = parser.parse(content);
+
     if (parseResult.isOk()) {
-        network = DBCAST2Network(*parseResult.value());
+        return DBCAST2Network(*parseResult.value());
     } else {
         LOG_ERROR("Parse error: %s", parseResult.error().toString().c_str());
+        return nullptr;
     }
-    
-    return network;
 }

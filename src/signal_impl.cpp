@@ -305,6 +305,9 @@ SignalImpl::SignalImpl(
     }
     switch (extended_value_type)
     {
+    case EExtendedValueType::Integer:
+        // Integer type doesn't have specific bit size requirements
+        break;
     case EExtendedValueType::Float:
         if (bit_size != 32)
         {

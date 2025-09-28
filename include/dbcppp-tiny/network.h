@@ -1,13 +1,11 @@
 #pragma once
 
 #include <memory>
-#include <iostream>
 #include <string>
 #include <vector>
-#include <istream>
 #include <functional>
 #include <unordered_map>
-#include <filesystem>
+#include <map>
 
 #include "export.h"
 #include "iterator.h"
@@ -34,8 +32,10 @@ namespace dbcppp
             , std::vector<std::unique_ptr<IAttributeDefinition>>&& attribute_definitions
             , std::vector<std::unique_ptr<IAttribute>>&& attribute_defaults
             , std::vector<std::unique_ptr<IAttribute>>&& attribute_values);
-        static std::map<std::string, std::unique_ptr<INetwork>> LoadNetworkFromFile(const std::filesystem::path& filename);
-        static std::unique_ptr<INetwork> LoadDBCFromIs(std::istream &is);
+        // Load DBC from file or string (no iostream dependency)
+        static std::unique_ptr<INetwork> LoadDBCFromFile(const char* filename);
+        static std::unique_ptr<INetwork> LoadDBCFromString(const std::string& content);
+        static std::map<std::string, std::unique_ptr<INetwork>> LoadNetworkFromFile(const std::string& filename);
 
 
         virtual ~INetwork() = default;

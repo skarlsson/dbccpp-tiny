@@ -74,6 +74,9 @@ MessageImpl::MessageImpl(
         case ISignal::EMultiplexer::MuxSwitch:
             _mux_signal = &sig;
             break;
+        case ISignal::EMultiplexer::NoMux:
+            // No action needed for non-multiplexed signals
+            break;
         }
     }
     if (have_mux_value && _mux_signal == nullptr)
@@ -98,6 +101,10 @@ MessageImpl::MessageImpl(const MessageImpl& other)
         case ISignal::EMultiplexer::MuxSwitch:
             _mux_signal = &sig;
             break;
+        case ISignal::EMultiplexer::NoMux:
+        case ISignal::EMultiplexer::MuxValue:
+            // No action needed
+            break;
         }
     }
     _error = other._error;
@@ -118,6 +125,10 @@ MessageImpl& MessageImpl::operator=(const MessageImpl& other)
         {
         case ISignal::EMultiplexer::MuxSwitch:
             _mux_signal = &sig;
+            break;
+        case ISignal::EMultiplexer::NoMux:
+        case ISignal::EMultiplexer::MuxValue:
+            // No action needed
             break;
         }
     }

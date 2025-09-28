@@ -1,4 +1,3 @@
-#include <iostream>
 #include "signal_type_impl.h"
 
 using namespace dbcppp;

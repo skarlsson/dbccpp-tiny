@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <iostream>
 #include "attribute_definition_impl.h"
 
 using namespace dbcppp;

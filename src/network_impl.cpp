@@ -1,6 +1,5 @@
 #include <algorithm>
-#include <fstream>
-#include <iomanip>
+#include <cstring>
 #include "dbcppp-tiny/network.h"
 #include "network_impl.h"
 #include "log.h"
@@ -205,21 +204,21 @@ std::vector<AttributeImpl>& NetworkImpl::attributeValues()
     return _attribute_values;
 }
 
-std::map<std::string, std::unique_ptr<INetwork>> INetwork::LoadNetworkFromFile(const std::filesystem::path& filename)
+std::map<std::string, std::unique_ptr<INetwork>> INetwork::LoadNetworkFromFile(const std::string& filename)
 {
     auto result = std::map<std::string, std::unique_ptr<INetwork>>();
-    auto is = std::ifstream(filename);
-    if (!is.is_open())
-    {
-        LOG_ERROR("Could not open file: %s", filename.c_str());
-    }
-    else if (filename.extension() == ".dbc")
-    {
-        auto net = LoadDBCFromIs(is);
-        if (net)
-        {
-            result.insert(std::make_pair("", std::move(net)));
+
+    // Check file extension
+    size_t dot_pos = filename.rfind('.');
+    if (dot_pos != std::string::npos) {
+        std::string ext = filename.substr(dot_pos);
+        if (ext == ".dbc") {
+            auto net = LoadDBCFromFile(filename.c_str());
+            if (net) {
+                result.insert(std::make_pair("", std::move(net)));
+            }
         }
     }
-    return std::move(result);
+
+    return result;
 }

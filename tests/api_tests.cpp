@@ -15,8 +15,7 @@ TEST_CASE("API Test: AttributeDefinition", "[unit]")
     
     SECTION("CPP API")
     {
-        std::istringstream iss(test_dbc);
-        auto net = INetwork::LoadDBCFromIs(iss);
+        auto net = INetwork::LoadDBCFromString(test_dbc);
         REQUIRE(net);
 
         REQUIRE(net->AttributeDefinitions_Size() == 1);
@@ -38,8 +37,7 @@ TEST_CASE("API Test: BitTiming", "[unit]")
     
     SECTION("CPP API")
     {
-        std::istringstream iss(test_dbc);
-        auto net = INetwork::LoadDBCFromIs(iss);
+        auto net = INetwork::LoadDBCFromString(test_dbc);
         REQUIRE(net);
 
         REQUIRE(net->BitTiming().Baudrate() == 1);
@@ -61,8 +59,7 @@ TEST_CASE("API Test: Signal", "[unit]")
     
     SECTION("CPP API")
     {
-        std::istringstream iss(test_dbc);
-        auto net = INetwork::LoadDBCFromIs(iss);
+        auto net = INetwork::LoadDBCFromString(test_dbc);
         REQUIRE(net);
 
         REQUIRE(net->Messages_Size() == 1);
@@ -126,8 +123,7 @@ TEST_CASE("API Test: Message", "[unit]")
     
     SECTION("CPP API")
     {
-        std::istringstream iss(test_dbc);
-        auto net = INetwork::LoadDBCFromIs(iss);
+        auto net = INetwork::LoadDBCFromString(test_dbc);
         REQUIRE(net);
 
         REQUIRE(net->Messages_Size() == 1);

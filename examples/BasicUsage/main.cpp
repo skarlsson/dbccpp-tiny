@@ -1,5 +1,4 @@
 
-#include <fstream>
 #include <unordered_map>
 #include <iostream>
 
@@ -50,11 +49,7 @@ void receive_frame_data(can_frame* frame)
 }
 int main()
 {
-    std::unique_ptr<dbcppp::INetwork> net;
-    {
-        std::ifstream idbc("your.dbc");
-        net = dbcppp::INetwork::LoadDBCFromIs(idbc);
-    }
+    std::unique_ptr<dbcppp::INetwork> net = dbcppp::INetwork::LoadDBCFromFile("your.dbc");
 
     if (net.get() == nullptr) {
         std::cerr << "failed to parse!\n";

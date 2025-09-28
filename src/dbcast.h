@@ -118,7 +118,8 @@ struct AttributeDefinition : Node {
         Signal,
         RelNode,
         RelMessage,
-        RelSignal
+        RelSignal,
+        EnvironmentVariable  // For EV_ - parsed but discarded
     };
     
     ObjectType object_type;

@@ -3,8 +3,8 @@
 #include "dbc_lexer.h"
 #include "dbcast.h"
 #include "dbc_parser_result.h"
+#include "log.h"
 #include <memory>
-#include <sstream>
 #include <algorithm>
 
 namespace dbcppp {
@@ -633,6 +633,9 @@ private:
         } else if (current().type == TokenType::SG_) {
             def.object_type = AST::AttributeDefinition::ObjectType::Signal;
             advance();
+        } else if (current().type == TokenType::EV_) {
+            def.object_type = AST::AttributeDefinition::ObjectType::EnvironmentVariable;
+            advance();
         } else {
             def.object_type = AST::AttributeDefinition::ObjectType::Network;
         }
@@ -1163,7 +1166,13 @@ public:
                 if (result.isError()) {
                     return Err<std::unique_ptr<AST::Network>>(result.error());
                 }
-                network->attribute_definitions.push_back(result.value());
+                // Check if this is an environment variable attribute and discard it
+                if (result.value().object_type == AST::AttributeDefinition::ObjectType::EnvironmentVariable) {
+                    LOG_INFO("Discarding EV_ attribute definition: '%s' (environment variables not supported on embedded)",
+                             result.value().name.c_str());
+                } else {
+                    network->attribute_definitions.push_back(result.value());
+                }
             } else if (current().type == TokenType::BA_) {
                 auto result = parseAttributeValue();
                 if (result.isError()) {

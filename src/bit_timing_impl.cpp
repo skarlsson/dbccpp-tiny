@@ -1,4 +1,3 @@
-#include <ostream>
 #include "bit_timing_impl.h"
 
 using namespace dbcppp;

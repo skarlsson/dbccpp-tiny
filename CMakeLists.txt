@@ -25,7 +25,6 @@ if(DEFINED ESP_PLATFORM)
         SRCS ${SOURCES}
         INCLUDE_DIRS
             "include"
-            "include/dbcppp-tiny"
         REQUIRES ""
         PRIV_REQUIRES ""
     )
