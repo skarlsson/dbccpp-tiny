@@ -27,7 +27,7 @@ make
 
 - `CMAKE_BUILD_TYPE=Release` - Optimized build
 - `BUILD_TESTS=ON/OFF` - Build test suite (default: ON)
-- `BUILD_EXAMPLES=ON/OFF` - Build examples (default: ON)
+- `BUILD_EXAMPLES=ON/OFF` - Build examples (default: OFF)
 
 ## Usage
 

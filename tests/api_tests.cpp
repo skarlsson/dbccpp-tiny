@@ -1,10 +1,10 @@
 
-#include "catch2.h"
+#include <catch2/catch_test_macros.hpp>
 #include <dbcppp-tiny/network.h>
 
 using namespace dbcppp;
 
-TEST_CASE("API Test: AttributeDefinition", "[]")
+TEST_CASE("API Test: AttributeDefinition", "[unit]")
 {
     constexpr const char* test_dbc =
         "VERSION \"\"\n"
@@ -28,7 +28,7 @@ TEST_CASE("API Test: AttributeDefinition", "[]")
         REQUIRE(value_type->maximum == 3000);
     }
 }
-TEST_CASE("API Test: BitTiming", "[]")
+TEST_CASE("API Test: BitTiming", "[unit]")
 {
     constexpr const char* test_dbc =
         "VERSION \"\"\n"
@@ -47,7 +47,7 @@ TEST_CASE("API Test: BitTiming", "[]")
         REQUIRE(net->BitTiming().BTR2() == 3);
     }
 }
-TEST_CASE("API Test: Signal", "[]")
+TEST_CASE("API Test: Signal", "[unit]")
 {
     constexpr const char* test_dbc =
         "VERSION \"\"\n"
@@ -112,7 +112,7 @@ TEST_CASE("API Test: Signal", "[]")
         REQUIRE(net->Messages_Get(0).Signals_Get(2).Receivers_Get(1) == "Recv1");
     }
 }
-TEST_CASE("API Test: Message", "[]")
+TEST_CASE("API Test: Message", "[unit]")
 {
     constexpr const char* test_dbc =
         "VERSION \"\"\n"

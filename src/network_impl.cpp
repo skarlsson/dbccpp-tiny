@@ -3,6 +3,7 @@
 #include <iomanip>
 #include "dbcppp-tiny/network.h"
 #include "network_impl.h"
+#include "log.h"
 
 using namespace dbcppp;
 
@@ -210,7 +211,7 @@ std::map<std::string, std::unique_ptr<INetwork>> INetwork::LoadNetworkFromFile(c
     auto is = std::ifstream(filename);
     if (!is.is_open())
     {
-        std::cout << "Error: Could not open file " << filename << "\n";
+        LOG_ERROR("Could not open file: %s", filename.c_str());
     }
     else if (filename.extension() == ".dbc")
     {

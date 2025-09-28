@@ -7,9 +7,9 @@
 
 #include "config.h"
 
-#include "catch2.h"
+#include <catch2/catch_test_macros.hpp>
 
-TEST_CASE("DBCParserTest", "[]")
+TEST_CASE("DBCParserTest", "[unit]")
 {
     std::size_t i = 0;
     std::size_t success_count = 0;

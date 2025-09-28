@@ -48,11 +48,28 @@ else()
     # CONFIGURATION
     set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
-    option(build_tests "Build tests" OFF)
-    option(build_examples "Build examples" OFF)
+    option(BUILD_TESTS "Build tests" ON)
+    option(BUILD_EXAMPLES "Build examples" OFF)
 
     # DEPENDENCIES & Requirements
-    # No external dependencies required!
+    # Find glog for logging on Linux
+    find_package(glog QUIET)
+    if(glog_FOUND)
+        message(STATUS "Found glog - will use for logging")
+    else()
+        message(STATUS "glog not found - logging disabled")
+    endif()
+
+    # Find Catch2 for tests (if tests are enabled)
+    if(BUILD_TESTS)
+        find_package(Catch2 3 QUIET)
+        if(Catch2_FOUND)
+            message(STATUS "Found Catch2 v3 - will build tests")
+        else()
+            message(WARNING "Catch2 v3 not found - tests will be disabled")
+            set(BUILD_TESTS OFF)
+        endif()
+    endif()
 
     # CREATE LIBRARY
     file(GLOB include "include/dbcppp-tiny/*.h")
@@ -72,6 +89,14 @@ else()
         include/
     )
 
+    # Link with glog if available
+    if(glog_FOUND)
+        target_link_libraries(${PROJECT_NAME} PUBLIC glog::glog)
+        target_compile_definitions(${PROJECT_NAME} PUBLIC USE_GLOG)
+    else()
+        target_compile_definitions(${PROJECT_NAME} PUBLIC DBCPPP_NO_LOGGING)
+    endif()
+
     # INSTALL LIBRARY
     install(TARGETS ${PROJECT_NAME}
         RUNTIME DESTINATION bin
@@ -81,11 +106,11 @@ else()
     )
 
     # ADDITIONAL: Tests & Examples
-    if (build_tests)
+    if (BUILD_TESTS)
       add_subdirectory(tests)
     endif()
 
-    if (build_examples)
+    if (BUILD_EXAMPLES)
       add_subdirectory(examples)
     endif()
 

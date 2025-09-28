@@ -6,11 +6,11 @@
 #include <unordered_map>
 #include <cassert>
 #include <algorithm>
-#include <iostream>
 
 #include "dbcppp-tiny/network.h"
 #include "dbcast.h"
 #include "dbc_parser.h"
+#include "log.h"
 
 using namespace dbcppp;
 
@@ -242,7 +242,7 @@ static auto getSignalMultiplexerValues(const AST::Network& net, const std::strin
             std::vector<ISignalMultiplexerValue::Range> value_ranges;
             for (const auto& r : gsmv.value_ranges)
             {
-                value_ranges.push_back({r.from, r.to});
+                value_ranges.push_back({static_cast<std::size_t>(r.from), static_cast<std::size_t>(r.to)});
             }
             auto signal_multiplexer_value = ISignalMultiplexerValue::Create(
                   std::move(switch_name)
@@ -305,23 +305,26 @@ static auto getSignals(const AST::Network& net, const AST::Message& m, Cache con
             
         if (ns->Error(ISignal::EErrorCode::SignalExceedsMessageSize))
         {
-            std::cout << "Warning: The signals '" << m.name << "::" << s.name << "'"
-                << " start_bit + bit_size exceeds the byte size of the message! Ignoring this error will lead to garbage data when using the decode function of this signal." << std::endl;
+            LOG_WARNING("Signal '%s::%s' start_bit + bit_size exceeds the byte size of the message! "
+                       "Ignoring this error will lead to garbage data when using the decode function of this signal.",
+                       m.name.c_str(), s.name.c_str());
         }
         if (ns->Error(ISignal::EErrorCode::WrongBitSizeForExtendedDataType))
         {
-            std::cout << "Warning: The signals '" << m.name << "::" << s.name << "'"
-                << " bit_size does not fit the bit size of the specified ExtendedValueType." << std::endl;
+            LOG_WARNING("Signal '%s::%s' bit_size does not fit the bit size of the specified ExtendedValueType.",
+                       m.name.c_str(), s.name.c_str());
         }
         if (ns->Error(ISignal::EErrorCode::MaschinesFloatEncodingNotSupported))
         {
-            std::cout << "Warning: Signal '" << m.name << "::" << s.name << "'"
-                << " This warning appears when a signal uses type float but the system this programm is running on does not uses IEEE 754 encoding for floats." << std::endl;
+            LOG_WARNING("Signal '%s::%s' uses type float but the system this program is running on "
+                       "does not use IEEE 754 encoding for floats.",
+                       m.name.c_str(), s.name.c_str());
         }
         if (ns->Error(ISignal::EErrorCode::MaschinesDoubleEncodingNotSupported))
         {
-            std::cout << "Warning: Signal '" << m.name << "::" << s.name << "'"
-                << " This warning appears when a signal uses type double but the system this programm is running on does not uses IEEE 754 encoding for doubles." << std::endl;
+            LOG_WARNING("Signal '%s::%s' uses type double but the system this program is running on "
+                       "does not use IEEE 754 encoding for doubles.",
+                       m.name.c_str(), s.name.c_str());
         }
         signals.emplace_back(std::move(ns));
     }
@@ -405,7 +408,7 @@ static auto getMessages(const AST::Network& net, Cache const& cache)
             , std::move(signal_groups));
         if (msg->Error() == IMessage::EErrorCode::MuxValeWithoutMuxSignal)
         {
-            std::cout << "Warning: Message " << msg->Name() << " does have mux value but no mux signal!" << std::endl;
+            LOG_WARNING("Message '%s' has mux value but no mux signal!", msg->Name().c_str());
         }
         messages.emplace_back(std::move(msg));
     }
@@ -433,6 +436,15 @@ static auto getAttributeDefinitions(const AST::Network& net)
             break;
         case AST::AttributeDefinition::ObjectType::Signal:
             object_type = IAttributeDefinition::EObjectType::Signal;
+            break;
+        case AST::AttributeDefinition::ObjectType::RelNode:
+            object_type = IAttributeDefinition::EObjectType::Node;  // Map to Node for now
+            break;
+        case AST::AttributeDefinition::ObjectType::RelMessage:
+            object_type = IAttributeDefinition::EObjectType::Message;  // Map to Message for now
+            break;
+        case AST::AttributeDefinition::ObjectType::RelSignal:
+            object_type = IAttributeDefinition::EObjectType::Signal;  // Map to Signal for now
             break;
         }
         
@@ -562,7 +574,7 @@ std::unique_ptr<INetwork> INetwork::LoadDBCFromIs(std::istream& is)
     if (parseResult.isOk()) {
         network = DBCAST2Network(*parseResult.value());
     } else {
-        std::cerr << "Parse error: " << parseResult.error().toString() << std::endl;
+        LOG_ERROR("Parse error: %s", parseResult.error().toString().c_str());
     }
     
     return network;

@@ -11,7 +11,7 @@
 
 #include "../include/dbcppp-tiny/network.h"
 
-#include "catch2.h"
+#include <catch2/catch_test_macros.hpp>
 
 auto generate_random_signal(
       std::size_t max_msg_byte_size
