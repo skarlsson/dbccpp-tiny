@@ -3,7 +3,7 @@
 A lightweight C++ library for parsing DBC (CAN Database) files, optimized for embedded systems and high-performance decoding.
 
 # Credits
-heavily inspired by dbccpp https://github.com/xR3b0rn/dbcppp
+heavily inspired by dbcppp https://github.com/xR3b0rn/dbcppp
 
 ## Features
 
