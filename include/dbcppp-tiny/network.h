@@ -32,9 +32,18 @@ namespace dbcppp
             , std::vector<std::unique_ptr<IAttributeDefinition>>&& attribute_definitions
             , std::vector<std::unique_ptr<IAttribute>>&& attribute_defaults
             , std::vector<std::unique_ptr<IAttribute>>&& attribute_values);
+        // Filter callback types for selective parsing
+        // Return true to keep the component, false to discard
+        using MessageFilter = std::function<bool(uint32_t message_id, const std::string& message_name)>;
+        using SignalFilter = std::function<bool(const std::string& signal_name, uint32_t message_id)>;
+
         // Load DBC from file or string (no iostream dependency)
-        static std::unique_ptr<INetwork> LoadDBCFromFile(const char* filename);
-        static std::unique_ptr<INetwork> LoadDBCFromString(const std::string& content);
+        static std::unique_ptr<INetwork> LoadDBCFromFile(const char* filename,
+            MessageFilter message_filter = [](uint32_t, const std::string&) { return true; },
+            SignalFilter signal_filter = [](const std::string&, uint32_t) { return true; });
+        static std::unique_ptr<INetwork> LoadDBCFromString(const std::string& content,
+            MessageFilter message_filter = [](uint32_t, const std::string&) { return true; },
+            SignalFilter signal_filter = [](const std::string&, uint32_t) { return true; });
         static std::map<std::string, std::unique_ptr<INetwork>> LoadNetworkFromFile(const std::string& filename);
 
 

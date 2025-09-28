@@ -36,6 +36,7 @@ struct NodeCache
 
 struct Cache
 {
+
     AttributeList NetworkAttributes;
     std::unordered_map<std::string, NodeCache> Nodes;
     std::unordered_map<uint64_t, MessageCache> Messages;
@@ -414,6 +415,62 @@ static auto getMessages(const AST::Network& net, Cache const& cache)
     return messages;
 }
 
+static auto getMessagesFiltered(const AST::Network& net, Cache const& cache,
+    INetwork::MessageFilter message_filter,
+    INetwork::SignalFilter signal_filter)
+{
+    std::vector<std::unique_ptr<IMessage>> messages;
+    uint32_t discarded_messages = 0;
+    uint32_t discarded_signals = 0;
+
+    for (const auto& m : net.messages)
+    {
+        // Check if we should keep this message
+        if (!message_filter(m.id, std::string(m.name))) {
+            discarded_messages++;
+            continue;
+        }
+
+        auto message_transmitters = getMessageTransmitters(net, m);
+
+        // Filter signals based on signal_filter
+        auto all_signals = getSignals(net, m, cache);
+        std::vector<std::unique_ptr<ISignal>> filtered_signals;
+        for (auto& sig : all_signals) {
+            if (signal_filter(sig->Name(), m.id)) {
+                filtered_signals.push_back(std::move(sig));
+            } else {
+                discarded_signals++;
+            }
+        }
+
+        auto attribute_values = getAttributeValues(net, m, cache);
+        auto signal_groups = getSignalGroups(net, m);
+
+        auto msg = IMessage::Create(
+              m.id
+            , std::string(m.name)
+            , m.size
+            , std::string(m.transmitter)
+            , std::move(message_transmitters)
+            , std::move(filtered_signals)
+            , std::move(attribute_values)
+            , std::move(signal_groups));
+
+        if (msg->Error() == IMessage::EErrorCode::MuxValeWithoutMuxSignal)
+        {
+            LOG_WARNING("Message '%s' has mux value but no mux signal!", msg->Name().c_str());
+        }
+        messages.emplace_back(std::move(msg));
+    }
+
+    if (discarded_messages > 0 || discarded_signals > 0) {
+        LOG_INFO("Filter discarded %u messages and %u signals", discarded_messages, discarded_signals);
+    }
+
+    return messages;
+}
+
 static auto getAttributeDefinitions(const AST::Network& net)
 {
     std::vector<std::unique_ptr<IAttributeDefinition>> attribute_definitions;
@@ -566,8 +623,75 @@ std::unique_ptr<INetwork> DBCAST2Network(const AST::Network& net)
 );
 }
 
+// Filtered version of DBCAST2Network
+std::unique_ptr<INetwork> DBCAST2NetworkFiltered(const AST::Network& net,
+    INetwork::MessageFilter message_filter,
+    INetwork::SignalFilter signal_filter)
+{
+    Cache cache;
+
+    // Build cache for attributes - only for messages/signals we'll keep
+    for (const auto& av : net.attribute_values)
+    {
+        switch (av.type) {
+        case AST::AttributeValue_t::Type::Network:
+            cache.NetworkAttributes.emplace_back(&av);
+            break;
+        case AST::AttributeValue_t::Type::Node:
+            cache.Nodes[av.node_name].Attributes.emplace_back(&av);
+            break;
+        case AST::AttributeValue_t::Type::Message:
+            // Only cache if message will be kept
+            for (const auto& m : net.messages) {
+                if (m.id == av.message_id && message_filter(m.id, std::string(m.name))) {
+                    cache.Messages[av.message_id].Attributes.emplace_back(&av);
+                    break;
+                }
+            }
+            break;
+        case AST::AttributeValue_t::Type::Signal:
+            // Only cache if message will be kept
+            for (const auto& m : net.messages) {
+                if (m.id == av.message_id && message_filter(m.id, std::string(m.name))) {
+                    cache.Messages[av.message_id].Signals[av.signal_name].Attributes.emplace_back(&av);
+                    break;
+                }
+            }
+            break;
+        }
+    }
+
+    // Build cache for value descriptions - only for signals we'll keep
+    for (const auto& vd : net.value_descriptions)
+    {
+        if (vd.type == AST::ValueDescription::Type::Signal) {
+            // Check if message will be kept
+            for (const auto& m : net.messages) {
+                if (m.id == vd.message_id && message_filter(m.id, std::string(m.name))) {
+                    cache.Messages[vd.message_id].Signals[vd.object_name].ValueDescriptions = &vd;
+                    break;
+                }
+            }
+        }
+    }
+
+    return INetwork::Create(
+          getVersion(net)
+        , getNewSymbols(net)
+        , getBitTiming(net)
+        , getNodes(net, cache)
+        , getValueTables(net)
+        , getMessagesFiltered(net, cache, message_filter, signal_filter)
+        , getAttributeDefinitions(net)
+        , getAttributeDefaults(net)
+        , getAttributeValues(net, cache)
+    );
+}
+
 // Implementation without iostream
-std::unique_ptr<INetwork> INetwork::LoadDBCFromFile(const char* filename)
+std::unique_ptr<INetwork> INetwork::LoadDBCFromFile(const char* filename,
+    MessageFilter message_filter,
+    SignalFilter signal_filter)
 {
     // Use FileLineReader to read file without iostream
     FileLineReader reader;
@@ -584,18 +708,20 @@ std::unique_ptr<INetwork> INetwork::LoadDBCFromFile(const char* filename)
     }
     reader.close();
 
-    // Use existing full parser
-    return LoadDBCFromString(content);
+    // Use existing full parser with filters
+    return LoadDBCFromString(content, message_filter, signal_filter);
 }
 
-std::unique_ptr<INetwork> INetwork::LoadDBCFromString(const std::string& content)
+std::unique_ptr<INetwork> INetwork::LoadDBCFromString(const std::string& content,
+    MessageFilter message_filter,
+    SignalFilter signal_filter)
 {
     // Use the existing full DBC parser that has complete implementation
     DBCParser parser;
     auto parseResult = parser.parse(content);
 
     if (parseResult.isOk()) {
-        return DBCAST2Network(*parseResult.value());
+        return DBCAST2NetworkFiltered(*parseResult.value(), message_filter, signal_filter);
     } else {
         LOG_ERROR("Parse error: %s", parseResult.error().toString().c_str());
         return nullptr;

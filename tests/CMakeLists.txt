@@ -34,3 +34,9 @@ add_dependencies(${PROJECT_NAME}_Test ${PROJECT_NAME})
 target_link_libraries(${PROJECT_NAME}_Test ${PROJECT_NAME} Catch2::Catch2WithMain)
 
 add_custom_target(RunTests COMMAND $<TARGET_FILE:${PROJECT_NAME}_Test> "" DEPENDS ${PROJECT_NAME}_Test)
+
+# Add standalone DAG filter test
+add_executable(test_dag_filter test_dag_filter.cpp)
+set_property(TARGET test_dag_filter PROPERTY CXX_STANDARD 17)
+add_dependencies(test_dag_filter ${PROJECT_NAME})
+target_link_libraries(test_dag_filter ${PROJECT_NAME})
